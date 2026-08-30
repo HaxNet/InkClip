@@ -5,8 +5,7 @@ pkgrel=1
 pkgdesc="Fast scratchpad drawing app that copies straight to the clipboard"
 arch=('any')
 url="https://github.com/HaxNet/InkClip"
-# TODO: add a LICENSE file to the repo, then set this properly (e.g. 'MIT').
-license=('custom')
+license=('MIT')
 depends=('python' 'pyside6')
 optdepends=('qt6-wayland: native Wayland support (recommended on Wayland compositors)')
 makedepends=('make')

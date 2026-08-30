@@ -15,6 +15,7 @@ BINDIR     := $(DESTDIR)$(PREFIX)/bin
 APPDIR     := $(DESTDIR)$(PREFIX)/share/inkclip
 DESKTOPDIR := $(DESTDIR)$(PREFIX)/share/applications
 ICONDIR    := $(DESTDIR)$(PREFIX)/share/icons/hicolor/scalable/apps
+LICENSEDIR := $(DESTDIR)$(PREFIX)/share/licenses/inkclip
 
 .PHONY: help install uninstall user-install user-uninstall update-caches check run
 
@@ -30,6 +31,8 @@ help:
 install:
 	install -Dm644 main.py $(APPDIR)/main.py
 	install -Dm644 packaging/inkclip.svg $(ICONDIR)/inkclip.svg
+	# Arch expects the licence of an MIT package under share/licenses/<pkg>/.
+	install -Dm644 LICENSE $(LICENSEDIR)/LICENSE
 	# Launcher with the install prefix baked in, so it works regardless of PATH.
 	install -d $(BINDIR)
 	printf '#!/bin/sh\nexec %s %s/main.py "$$@"\n' \
@@ -50,6 +53,7 @@ uninstall:
 	rm -f $(DESKTOPDIR)/inkclip.desktop
 	rm -f $(ICONDIR)/inkclip.svg
 	rm -rf $(APPDIR)
+	rm -rf $(LICENSEDIR)
 ifeq ($(strip $(DESTDIR)),)
 	@$(MAKE) --no-print-directory update-caches
 	@echo 'InkClip removed from $(PREFIX).'

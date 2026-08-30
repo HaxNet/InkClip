@@ -14,10 +14,17 @@ No accounts, no files to manage, no Electron — just Python and Qt.
 <img src="https://img.shields.io/badge/Qt%206-PySide6-41CD52?logo=qt&logoColor=white&style=flat-square" alt="PySide6">
 <img src="https://img.shields.io/badge/Arch%20Linux-1793D1?logo=archlinux&logoColor=white&style=flat-square" alt="Arch Linux">
 <img src="https://img.shields.io/badge/Wayland%20%7C%20X11-supported-6E7B8B?style=flat-square" alt="Wayland and X11">
+<img src="https://img.shields.io/badge/License-MIT-22c55e?style=flat-square" alt="MIT License">
 
 <br><br>
 
 <img src="docs/screenshot.png" alt="The InkClip window: toolbar across the top, a hand-drawn diagram on a white canvas" width="840">
+
+<br><br>
+
+<a href="https://buymeacoffee.com/tekniq">
+  <img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-tekniq-FFDD00?logo=buymeacoffee&logoColor=black&style=for-the-badge" alt="Buy me a coffee">
+</a>
 
 </div>
 
@@ -202,6 +209,7 @@ InkClip/
 │   └── inkclip.svg            # scalable app icon
 ├── docs/                      # logo and screenshots
 ├── requirements.txt
+├── LICENSE
 └── README.md
 ```
 
@@ -326,6 +334,17 @@ Mouse drawing always works regardless.
 
 </details>
 
+## Support
+
+InkClip is free and always will be. If it saved you some time, you can say thanks:
+
+<a href="https://buymeacoffee.com/tekniq">
+  <img src="https://img.shields.io/badge/Buy%20me%20a%20coffee-tekniq-FFDD00?logo=buymeacoffee&logoColor=black&style=for-the-badge" alt="Buy me a coffee">
+</a>
+
+Stars, bug reports and pull requests are just as welcome.
+
 ## License
 
-No license file yet — add one and set `license=()` in the `PKGBUILD` to match.
+[MIT](LICENSE) — do what you like with it, just keep the copyright notice.
+
