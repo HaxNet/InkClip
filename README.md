@@ -6,7 +6,6 @@
 </picture>
 
 
-
 ### A fast scratchpad drawing app for Linux
 
 Sketch something, press <kbd>Ctrl</kbd>+<kbd>C</kbd>, paste it anywhere.<br>
