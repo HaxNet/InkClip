@@ -1,0 +1,14 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=InkClip
+GenericName=Drawing Scratchpad
+Comment=Draw a quick sketch and copy it straight to the clipboard
+Exec=@BINDIR@/inkclip
+TryExec=@BINDIR@/inkclip
+Icon=inkclip
+Terminal=false
+Categories=Graphics;2DGraphics;RasterGraphics;
+Keywords=draw;drawing;sketch;scratchpad;whiteboard;annotate;clipboard;paint;note;
+StartupNotify=true
+StartupWMClass=inkclip
