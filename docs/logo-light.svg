@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 450 150" width="450" height="150"
+     role="img" aria-label="InkClip">
+  <title>InkClip</title>
+  <g transform="translate(18,20) scale(1.7)">
+    <rect x="7" y="8" width="50" height="52" rx="8" fill="#ffffff" stroke="#2b2f38" stroke-width="3.5"/>
+    <rect x="21" y="2" width="22" height="11" rx="5.5" fill="#1a5fd0"/>
+    <rect x="15" y="31" width="34" height="10" rx="5" fill="#f2e600" opacity="0.85"/>
+    <path d="M15 39 C21 24, 27 47, 33 33 S45 25, 49 33" fill="none" stroke="#16181d"
+          stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle cx="45" cy="50" r="3.5" fill="#e02020"/>
+  </g>
+  <text x="150" y="86" font-family="system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="62" font-weight="700"
+        letter-spacing="-1.5" fill="#16181d">Ink<tspan fill="#1a5fd0">Clip</tspan></text>
+  <text x="153" y="119" font-family="system-ui,-apple-system,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif" font-size="19" font-weight="500"
+        letter-spacing="0.6" fill="#5f6672">Draw it. Copy it. Paste it.</text>
+</svg>
