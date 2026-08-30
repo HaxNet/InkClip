@@ -349,3 +349,4 @@ Stars, bug reports and pull requests are just as welcome.
 
 [MIT](LICENSE) — do what you like with it, just keep the copyright notice.
 
+# InkClip
