@@ -5,6 +5,8 @@
   <img src="docs/logo-light.svg" alt="InkClip" width="380">
 </picture>
 
+
+
 ### A fast scratchpad drawing app for Linux
 
 Sketch something, press <kbd>Ctrl</kbd>+<kbd>C</kbd>, paste it anywhere.<br>
