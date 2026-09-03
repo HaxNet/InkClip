@@ -3,6 +3,8 @@
 
 Draw something, hit Ctrl+C, paste it wherever you need it.
 
+Built-by: HaxNet at TekNiQ
+
 Run with:
     python main.py
 """
