@@ -106,6 +106,9 @@ QWIDGETSIZE_MAX = 16777215  # Qt's "no maximum" sentinel
 # Breathing room left around the drawing when selecting just the content.
 CONTENT_MARGIN = 4
 
+# A pasted image is scaled down if it would not otherwise fit on the canvas.
+PASTE_FIT_MARGIN = 8
+
 # Marching-ants animation around a selection.
 ANTS_INTERVAL_MS = 110
 ANTS_DASH = 4
@@ -125,6 +128,10 @@ class DrawingCanvas(QWidget):
 
     The select tool drags out a rectangle; copy and save then act on that region
     instead of the whole canvas.
+
+    A pasted image floats above the canvas until it is committed, so it can be
+    dragged into place first. Anything that would otherwise read a half-placed
+    canvas - copy, save, undo, clear, a new stroke - commits it first.
     """
 
     status_message = Signal(str)
@@ -153,6 +160,11 @@ class DrawingCanvas(QWidget):
         self._selection_origin = QPointF()
         self._last_point = QPointF()
         self._undo_stack: list[QImage] = []
+
+        # A pasted image floating above the canvas, not yet committed to it.
+        self._pasted: QImage | None = None
+        self._paste_rect = QRect()
+        self._paste_grab: QPoint | None = None
 
         # Marching ants around the selection.
         self._ants_offset = 0
@@ -229,6 +241,8 @@ class DrawingCanvas(QWidget):
 
     def canvas_image(self, region: QRect | None = None) -> QImage:
         """The canvas (or just `region`) as a standalone image, for copy / save."""
+        # Copying or saving means "what I can see", so a floating paste counts.
+        self.commit_paste()
         dpr = self._image_dpr()
         rect = self.canvas_rect()
         if region is not None and not region.isEmpty():
@@ -266,6 +280,7 @@ class DrawingCanvas(QWidget):
 
     def set_canvas_size(self, size: QSize | None) -> None:
         """Fix the canvas at `size` pixels, or pass None to follow the window."""
+        self.commit_paste()
         self.fixed_size = QSize(size) if size is not None else None
         if self.fixed_size is None:
             self.setMinimumSize(0, 0)
@@ -333,6 +348,8 @@ class DrawingCanvas(QWidget):
 
     def select_content(self) -> bool:
         """Select just the drawn area. Returns False when the canvas is blank."""
+        # A floating paste is part of the picture as far as the eye is concerned.
+        self.commit_paste()
         rect = self.content_rect()
         if rect is None:
             self.clear_selection()
@@ -343,6 +360,7 @@ class DrawingCanvas(QWidget):
         return True
 
     def select_all(self) -> None:
+        self.commit_paste()
         self.set_selection(self.canvas_rect())
 
     def set_selection(self, rect: QRect | None) -> None:
@@ -377,6 +395,9 @@ class DrawingCanvas(QWidget):
             self._undo_stack.pop(0)
 
     def undo(self) -> None:
+        # Undo right after a paste should take the paste back, not a stroke.
+        if self.cancel_paste():
+            return
         if not self._undo_stack:
             self.status_message.emit("Nothing to undo")
             return
@@ -397,6 +418,7 @@ class DrawingCanvas(QWidget):
         self.status_message.emit("Undo")
 
     def clear(self) -> None:
+        self.cancel_paste()
         self.push_undo()
         self._image.fill(Qt.white)
         self.clear_selection()
@@ -405,6 +427,9 @@ class DrawingCanvas(QWidget):
 
     def delete_selection(self) -> bool:
         """Erase the selected region. Returns False when nothing is selected."""
+        # Del on a floating paste means "get rid of it", not "erase underneath".
+        if self.cancel_paste():
+            return True
         if self.selection is None:
             return False
         rect = self.selection.intersected(self.canvas_rect())
@@ -423,6 +448,109 @@ class DrawingCanvas(QWidget):
         self.clear_selection()
         self.update()
         self.status_message.emit(f"Deleted {rect.width()} x {rect.height()}")
+        return True
+
+    # --- paste ---------------------------------------------------------------
+
+    def has_floating_paste(self) -> bool:
+        return self._pasted is not None
+
+    def paste_image(self, image: QImage) -> bool:
+        """Float `image` above the canvas, centred on the visible area.
+
+        Nothing is written to the backing image yet: the paste stays draggable
+        until `commit_paste` fixes it in place, so it can be nudged where you
+        want it before it becomes part of the drawing.
+        """
+        if image.isNull():
+            return False
+
+        self.commit_paste()
+
+        # Clipboard images arrive in device pixels. Dividing by the canvas scale
+        # keeps them 1:1 in the copied/saved output rather than doubling on HiDPI.
+        dpr = self._image_dpr()
+        width = max(1, math.ceil(image.width() / dpr))
+        height = max(1, math.ceil(image.height() / dpr))
+
+        area = self.canvas_rect()
+        scaled = False
+        limit_w = max(1, area.width() - PASTE_FIT_MARGIN * 2)
+        limit_h = max(1, area.height() - PASTE_FIT_MARGIN * 2)
+        if width > limit_w or height > limit_h:
+            factor = min(limit_w / width, limit_h / height)
+            width = max(1, int(width * factor))
+            height = max(1, int(height * factor))
+            scaled = True
+
+        self._pasted = image.convertToFormat(QImage.Format_ARGB32_Premultiplied)
+        self._paste_rect = self._clamp_paste(
+            QRect(self._paste_origin(width, height), QSize(width, height))
+        )
+        self._paste_grab = None
+        self.set_selection(self._paste_rect)
+        self.setCursor(Qt.SizeAllCursor)
+        self.update()
+
+        note = " (scaled to fit)" if scaled else ""
+        self.status_message.emit(
+            f"Pasted {width} x {height}{note} - drag to move, Enter to place, Esc to cancel"
+        )
+        return True
+
+    def _paste_origin(self, width: int, height: int) -> QPoint:
+        """Top-left that centres a width x height paste on what you can see."""
+        visible = self.visibleRegion().boundingRect()
+        if visible.isEmpty():
+            visible = self.canvas_rect()
+        return QPoint(
+            visible.x() + (visible.width() - width) // 2,
+            visible.y() + (visible.height() - height) // 2,
+        )
+
+    def _clamp_paste(self, rect: QRect) -> QRect:
+        """Keep a paste on the canvas, so it can never be dragged out of reach."""
+        area = self.canvas_rect()
+        x = min(max(rect.x(), area.left()), max(area.left(), area.right() - rect.width() + 1))
+        y = min(max(rect.y(), area.top()), max(area.top(), area.bottom() - rect.height() + 1))
+        return QRect(x, y, rect.width(), rect.height())
+
+    def commit_paste(self) -> bool:
+        """Draw the floating paste into the canvas. False when there is none."""
+        if self._pasted is None:
+            return False
+
+        rect = QRect(self._paste_rect)
+        self.push_undo()
+        painter = QPainter(self._image)
+        painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
+        # An explicit target rect scales the source for us, so the paste lands at
+        # the size it was shown at regardless of the image's own pixel ratio.
+        painter.drawImage(rect, self._pasted)
+        painter.end()
+
+        self._pasted = None
+        self._paste_rect = QRect()
+        self._paste_grab = None
+        self.setCursor(Qt.CrossCursor)
+        # The selection is left on the pasted region so Ctrl+C can grab just it.
+        self.set_selection(rect)
+        self.update()
+        self.status_message.emit(f"Placed {rect.width()} x {rect.height()}")
+        return True
+
+    def cancel_paste(self) -> bool:
+        """Throw the floating paste away without touching the canvas."""
+        if self._pasted is None:
+            return False
+        stale = self._paste_rect.adjusted(-2, -2, 2, 2)
+        self._pasted = None
+        self._paste_rect = QRect()
+        self._paste_grab = None
+        self.setCursor(Qt.CrossCursor)
+        self.clear_selection()
+        self.update(stale)
+        self.status_message.emit("Paste cancelled")
         return True
 
     # --- drawing -------------------------------------------------------------
@@ -450,9 +578,16 @@ class DrawingCanvas(QWidget):
 
         painter = QPainter(target)
         painter.setRenderHint(QPainter.Antialiasing, True)
-        pen = QPen(self.stroke_color(), width, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
-        painter.setPen(pen)
-        painter.drawLine(start, end)
+        if start == end:
+            # QPainter draws nothing for a zero-length line, so a click that never
+            # moves needs an explicit dot of the same diameter as the stroke.
+            painter.setPen(Qt.NoPen)
+            painter.setBrush(self.stroke_color())
+            painter.drawEllipse(start, width / 2.0, width / 2.0)
+        else:
+            pen = QPen(self.stroke_color(), width, Qt.SolidLine, Qt.RoundCap, Qt.RoundJoin)
+            painter.setPen(pen)
+            painter.drawLine(start, end)
         painter.end()
 
         # Repaint just the dirty band, padded for the stroke width.
@@ -473,6 +608,16 @@ class DrawingCanvas(QWidget):
     # --- events --------------------------------------------------------------
 
     def _pointer_press(self, point: QPointF) -> None:
+        if self._pasted is not None:
+            if self._paste_rect.contains(point.toPoint()):
+                self._paste_grab = point.toPoint() - self._paste_rect.topLeft()
+                return
+            # Clicking away from the paste places it. The click is deliberately
+            # not passed on as a stroke, so putting a paste down can never leave
+            # a stray mark on the drawing.
+            self.commit_paste()
+            return
+
         if self.tool == TOOL_SELECT:
             self._selection_origin = QPointF(point)
             self.clear_selection()
@@ -481,13 +626,26 @@ class DrawingCanvas(QWidget):
             self._begin_stroke(point)
 
     def _pointer_move(self, point: QPointF, pressure: float) -> None:
-        if self._selecting:
+        if self._paste_grab is not None:
+            self._move_paste(point.toPoint() - self._paste_grab)
+        elif self._selecting:
             rect = self._drag_rect(point)
             if not rect.isEmpty():
                 self.set_selection(rect)
         elif self._drawing:
             self._draw_segment(self._last_point, point, pressure)
             self._last_point = QPointF(point)
+
+    def _move_paste(self, top_left: QPoint) -> None:
+        """Reposition the floating paste, repainting only what actually moved."""
+        moved = self._clamp_paste(QRect(top_left, self._paste_rect.size()))
+        if moved == self._paste_rect:
+            return
+        # Repaint the union of where it was and where it is, so no ghost is left.
+        stale = self._paste_rect.united(moved).adjusted(-2, -2, 2, 2)
+        self._paste_rect = moved
+        self.set_selection(moved)
+        self.update(stale)
 
     def _drag_rect(self, point: QPointF) -> QRect:
         """Rectangle between the drag origin and `point`, sized by drag distance.
@@ -501,6 +659,13 @@ class DrawingCanvas(QWidget):
         return QRect(int(left), int(top), int(right - left), int(bottom - top))
 
     def _pointer_release(self) -> None:
+        if self._paste_grab is not None:
+            self._paste_grab = None
+            self.status_message.emit(
+                f"Paste at {self._paste_rect.x()}, {self._paste_rect.y()}"
+                " - Enter to place, Esc to cancel"
+            )
+            return
         if self._selecting:
             self._selecting = False
             selection = self.selection
@@ -560,6 +725,9 @@ class DrawingCanvas(QWidget):
             painter.setOpacity(HIGHLIGHTER_OPACITY)
             painter.drawImage(QPoint(0, 0), self._overlay)
             painter.setOpacity(1.0)
+        if self._pasted is not None:
+            painter.setRenderHint(QPainter.SmoothPixmapTransform, True)
+            painter.drawImage(self._paste_rect, self._pasted)
         if self.selection is not None:
             self._paint_selection(painter)
         painter.end()
@@ -656,7 +824,7 @@ class MainWindow(QMainWindow):
         bar.setToolButtonStyle(Qt.ToolButtonTextOnly)
         bar.setStyleSheet(
             "QToolBar { background: #f4f4f6; border-bottom: 1px solid #d8d8de; padding: 4px; spacing: 2px; }"
-            "QToolButton { padding: 5px 8px; border: 1px solid transparent; border-radius: 4px; }"
+            "QToolButton { padding: 5px 6px; border: 1px solid transparent; border-radius: 4px; }"
             "QToolButton:hover { background: #e4e4ea; }"
             "QToolButton:checked { background: #ffffff; border: 1px solid #9aa0aa; }"
             "QToolButton#primary { background: #1a5fd0; color: #ffffff; font-weight: bold; }"
@@ -744,6 +912,7 @@ class MainWindow(QMainWindow):
             ("Undo", "Undo (Ctrl+Z)", self.canvas.undo),
             ("Clear", "Clear canvas (C)", self.canvas.clear),
             ("Save", "Save as PNG (Ctrl+S)", self.save_png),
+            ("Paste", "Paste an image from the clipboard (Ctrl+V)", self.paste_from_clipboard),
             ("Copy", "Copy canvas to clipboard (Ctrl+C)", self.copy_to_clipboard),
         ):
             action = QAction(text, self)
@@ -770,6 +939,7 @@ class MainWindow(QMainWindow):
     def _build_shortcuts(self) -> None:
         bindings = [
             (QKeySequence.Copy, self.copy_to_clipboard),
+            (QKeySequence.Paste, self.paste_from_clipboard),
             (QKeySequence.Undo, self.canvas.undo),
             (QKeySequence.Save, self.save_png),
             (QKeySequence.SelectAll, self.select_content),
@@ -778,6 +948,8 @@ class MainWindow(QMainWindow):
             ("H", lambda: self.select_tool(TOOL_HIGHLIGHTER)),
             ("E", lambda: self.select_tool(TOOL_ERASER)),
             ("S", lambda: self.select_tool(TOOL_SELECT)),
+            ("Return", self.place_paste),
+            ("Enter", self.place_paste),
             ("Esc", self.deselect),
             (QKeySequence.Delete, self.delete_selection),
             ("Backspace", self.delete_selection),
@@ -858,7 +1030,10 @@ class MainWindow(QMainWindow):
         self._update_mode_label()
 
     def deselect(self) -> None:
-        """Esc: drop the selection so copy and save cover the whole canvas again."""
+        """Esc: cancel a pending paste, or drop the selection."""
+        if self.canvas.cancel_paste():
+            self._update_mode_label()
+            return
         if self.canvas.selection is None:
             return
         self.canvas.clear_selection()
@@ -920,6 +1095,45 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(message, 3000)
 
     # --- actions -------------------------------------------------------------
+
+    def paste_from_clipboard(self) -> None:
+        """Ctrl+V: bring an image in from the clipboard, floating until placed."""
+        image = self._clipboard_image()
+        if image is None:
+            self.show_status(self._paste_failure_reason())
+            return
+        self.canvas.paste_image(image)
+        self._update_mode_label()
+
+    def _clipboard_image(self) -> QImage | None:
+        """The clipboard as an image, whether it holds one or a path to one."""
+        clipboard = QGuiApplication.clipboard()
+        image = clipboard.image()
+        if not image.isNull():
+            return image
+
+        # File managers copy a selected file as a URL rather than as pixels.
+        mime = clipboard.mimeData()
+        if mime is not None and mime.hasUrls():
+            for url in mime.urls():
+                if not url.isLocalFile():
+                    continue
+                loaded = QImage(url.toLocalFile())
+                if not loaded.isNull():
+                    return loaded
+        return None
+
+    def _paste_failure_reason(self) -> str:
+        """Say what the clipboard actually held, rather than just 'no image'."""
+        mime = QGuiApplication.clipboard().mimeData()
+        if mime is not None and mime.hasText():
+            return "Clipboard holds text, not an image - nothing to paste"
+        return "Clipboard has no image to paste"
+
+    def place_paste(self) -> None:
+        """Enter: commit a floating paste to the canvas."""
+        if self.canvas.commit_paste():
+            self._update_mode_label()
 
     def copy_to_clipboard(self) -> None:
         """Put the canvas - or the selection, if there is one - on the clipboard."""

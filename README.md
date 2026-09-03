@@ -9,6 +9,7 @@
 ### A fast scratchpad drawing app for Linux
 
 Sketch something, press <kbd>Ctrl</kbd>+<kbd>C</kbd>, paste it anywhere.<br>
+Or press <kbd>Ctrl</kbd>+<kbd>V</kbd> to bring an image in and draw on top of it.<br>
 No accounts, no files to manage, no Electron — just Python and Qt.
 
 <img src="https://img.shields.io/badge/Python-3.10%2B-3776AB?logo=python&logoColor=white&style=flat-square" alt="Python 3.10+">
@@ -127,6 +128,7 @@ python main.py   # straight from a checkout (or: make run)
 | :--- | :--- |
 | **Pen, highlighter, eraser** | Round caps, antialiased, six colors and four brush sizes |
 | **Copy to clipboard** | <kbd>Ctrl</kbd>+<kbd>C</kbd> puts the canvas straight on the system clipboard |
+| **Paste from clipboard** | <kbd>Ctrl</kbd>+<kbd>V</kbd> drops an image in, draggable until you place it |
 | **Trim to the drawing** | <kbd>Ctrl</kbd>+<kbd>A</kbd> selects only what you drew, not the blank canvas |
 | **Rectangular select** | Copy, save, or delete just one region |
 | **Canvas sizes** | Fit to window, or a fixed 800x600 / 1280x720 / 1920x1080 / custom canvas |
@@ -154,6 +156,31 @@ It keeps whatever tool you were holding, so you can carry on drawing and hit
 down, and on a blank canvas it says so rather than selecting nothing.
 <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd> selects the whole canvas if you do
 want the full frame.
+
+## Pasting an image in
+
+<kbd>Ctrl</kbd>+<kbd>V</kbd> brings whatever image is on the clipboard onto the
+canvas — a screenshot, a diagram, a photo — so you can scribble on top of it and
+copy the result straight back out.
+
+```text
+screenshot  ->  Ctrl+V  ->  drag it where you want  ->  Enter  ->  annotate  ->  Ctrl+C
+```
+
+The paste **floats above the canvas** until you place it, so you get a chance to
+put it where you want first:
+
+- **Drag it** anywhere on the canvas — it cannot be dragged off the edge
+- <kbd>Enter</kbd>, or a click anywhere else, **places** it. That click is never
+  turned into a pen stroke, so placing a paste can't leave a stray mark
+- <kbd>Esc</kbd> or <kbd>Del</kbd> **throws it away**, leaving the canvas exactly
+  as it was
+- <kbd>Ctrl</kbd>+<kbd>Z</kbd> takes back a placed paste in one step
+
+An image too big for the canvas is scaled down to fit, keeping its aspect ratio.
+Copying a *file* in your file manager works too — InkClip loads it from the path
+on the clipboard. If the clipboard holds text rather than an image, the status bar
+says so instead of failing silently.
 
 ## Selecting, deleting, resizing
 
@@ -185,10 +212,12 @@ keeps what you have drawn, and undo keeps working across the change.
 | Shortcut | Action |
 | :--- | :--- |
 | <kbd>Ctrl</kbd>+<kbd>C</kbd> | Copy canvas (or selection) to clipboard |
+| <kbd>Ctrl</kbd>+<kbd>V</kbd> | Paste an image from the clipboard |
+| <kbd>Enter</kbd> | Place a floating paste |
 | <kbd>Ctrl</kbd>+<kbd>A</kbd> | Select just the drawing, trimming blank margins |
 | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>A</kbd> | Select the whole canvas |
-| <kbd>Del</kbd> / <kbd>Backspace</kbd> | Erase the selected region |
-| <kbd>Esc</kbd> | Dismiss the selection |
+| <kbd>Del</kbd> / <kbd>Backspace</kbd> | Erase the selected region, or drop a pending paste |
+| <kbd>Esc</kbd> | Cancel a pending paste, or dismiss the selection |
 | <kbd>Ctrl</kbd>+<kbd>Z</kbd> | Undo |
 | <kbd>Ctrl</kbd>+<kbd>S</kbd> | Save canvas (or selection) as PNG |
 | <kbd>P</kbd> / <kbd>H</kbd> / <kbd>E</kbd> / <kbd>S</kbd> | Pen / highlighter / eraser / select |
@@ -227,6 +256,13 @@ Things worth knowing before changing it:
   layer and composited once at 35% on release.
 - **The eraser is just a white pen**, which is why the canvas is always opaque white
   rather than transparent.
+- **A pasted image floats rather than landing immediately.** It lives in
+  `_pasted`/`_paste_rect` and is only drawn into the backing image by
+  `commit_paste`, which is called by anything that would otherwise read a
+  half-placed canvas — copy, save, undo, clear, a new stroke, a canvas resize.
+- **Clipboard images arrive in device pixels** and are divided by the canvas
+  scale on the way in, so a paste stays 1:1 in the copied output instead of
+  doubling in size on a HiDPI screen.
 - **Backing images are allocated at widget size times device pixel ratio**, so
   strokes stay crisp on HiDPI. A *fixed* canvas is the exception: it is defined in
   output pixels and stays at a ratio of 1.0, because "1920x1080" has to mean
